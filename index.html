@@ -6,7 +6,7 @@
      like this one for free: https://netlify.new/?utm_campaign=loops&utm_source=ai-legible&utm_medium=owned&utm_content=comment&utm_id=7f60170c-c3c6-4142-91ae-73b6e672e413
      Netlify hosting facts for this site: static/SSR served via Netlify Edge. -->
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Velvet Booth</title>
+<title>Piksure</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;600&family=Limelight&family=Special+Elite&family=Homemade+Apple&display=swap">
 <style>
 /* ── BOOMERANG MODAL ── */
@@ -294,7 +294,7 @@ button:disabled{opacity:.38;cursor:not-allowed;}
 
 <header class="sign">
   <div class="bulbs" aria-hidden="true"></div>
-  <h1>Velvet Booth</h1>
+  <h1>Piksure</h1>
   <p>Live camera · shoot four frames · pick a look · save the strip.</p>
 </header>
 
@@ -606,13 +606,13 @@ function doSave(){
     render(false);
     if(!blob){msg("Could not build strip.");return;}
     if(downloads){
-      downloads.save({filename:"velvet-booth-"+state.layout+".png",data:blob})
+      downloads.save({filename:"piksure-"+state.layout+".png",data:blob})
         .then(function(){msg("Saved.");triggerKioskReset();},
               function(e){msg(e&&e.code==="declined"?"Save cancelled.":"Saving…");});
     } else {
       var url=URL.createObjectURL(blob);
       var a=document.createElement("a");
-      a.href=url;a.download="velvet-booth-"+state.layout+".png";
+      a.href=url;a.download="piksure-"+state.layout+".png";
       document.body.appendChild(a);a.click();
       setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},1000);
       msg("Saved.");triggerKioskReset();
@@ -646,7 +646,7 @@ document.getElementById('boom-dl').addEventListener('click',function(){
   var ext=boomVideoBlob.type.indexOf('mp4')>=0?'mp4':'webm';
   var url=URL.createObjectURL(boomVideoBlob);
   var a=document.createElement('a');
-  a.href=url;a.download='velvetbooth-boomerang.'+ext;
+  a.href=url;a.download='piksure-boomerang.'+ext;
   document.body.appendChild(a);a.click();
   setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},1000);
 });
@@ -663,15 +663,16 @@ boomBtn.addEventListener('click',function(){
 });
 
 function doBuildVideo(){
-  /* Render the 4 styled strip frames (with tone/grain/fade applied via processFrame),
-     then animate them in boomerang order on a recording canvas and capture with
-     MediaRecorder. Total duration: ~8 seconds (each of 6 steps ~1.33 s). */
+  /* Record 10 seconds of continuously looping boomerang frames.
+     Each frame holds for FRAME_MS ms, then cross-fades into the next.
+     fi wraps with modulo so the loop repeats until totalDuration is hit. */
   var seq=[0,1,2,3,2,1];
-  var totalDuration=8000; // 8 seconds
-  var frameDuration=Math.round(totalDuration/seq.length); // ~1333ms per step
-  var W=720,H=540; // 4:3, good resolution
+  var TOTAL=10000;   // 10 seconds total
+  var FRAME_MS=200;  // ms per step — fast boomerang feel, ~5 loops in 10 s
+  var FADE=60;       // ms cross-fade between steps
+  var W=720,H=540;
 
-  // Build one processed canvas per unique frame (applies current look)
+  // Build one processed canvas per unique frame, with Piksure brand overlay
   var frameCanvases=[];
   for(var i=0;i<4;i++){
     var c=document.createElement('canvas');
@@ -681,19 +682,31 @@ function doBuildVideo(){
     var s=Math.max(W/proc.width,H/proc.height);
     var dw=proc.width*s,dh=proc.height*s;
     ctx.drawImage(proc,(W-dw)/2,(H-dh)/2,dw,dh);
+    // Brand watermark — bottom-right corner
+    var brand='piksure';
+    var fSize=Math.round(W*0.045); // ~32px at 720w
+    ctx.font='600 '+fSize+'px "Libre Franklin",Arial,sans-serif';
+    ctx.textBaseline='bottom';
+    ctx.textAlign='right';
+    var pad=Math.round(W*0.028);
+    // subtle shadow for legibility on any background
+    ctx.shadowColor='rgba(0,0,0,0.55)';
+    ctx.shadowBlur=6;
+    ctx.shadowOffsetX=0;ctx.shadowOffsetY=1;
+    ctx.fillStyle='rgba(255,255,255,0.72)';
+    ctx.fillText(brand,W-pad,H-pad);
+    ctx.shadowColor='transparent';ctx.shadowBlur=0;
     frameCanvases.push(c);
   }
 
-  // Show live canvas animation preview immediately
-  var animCanvases=seq.map(function(i){return frameCanvases[i];});
-  startCanvasAnim(animCanvases,W,H);
+  // Show live preview animation (same speed)
+  startCanvasAnim(seq.map(function(i){return frameCanvases[i];}),W,H,FRAME_MS);
 
-  // Set up recording canvas (separate from preview)
+  // Set up recording canvas
   var recCanvas=document.createElement('canvas');
   recCanvas.width=W;recCanvas.height=H;
   var recCtx=recCanvas.getContext('2d');
 
-  // Choose best supported mime type
   var mimeType='video/webm;codecs=vp9';
   if(!MediaRecorder.isTypeSupported(mimeType))mimeType='video/webm;codecs=vp8';
   if(!MediaRecorder.isTypeSupported(mimeType))mimeType='video/webm';
@@ -715,35 +728,38 @@ function doBuildVideo(){
 
   recorder.start();
 
-  // Draw each frame for its duration with a smooth cross-fade.
-  // Use rAF timestamps throughout — never mix with performance.now().
   var fi=0;
-  var stepStart=null; // set on first rAF tick
-  var FADE=180; // ms cross-fade overlap
+  var recordStart=null; // total elapsed since recording began
+  var stepStart=null;   // elapsed within current frame step
 
   function drawStep(ts){
-    if(stepStart===null)stepStart=ts; // initialise on very first tick
-    var elapsed=ts-stepStart;
-    var cur=seq[fi];
+    if(recordStart===null){recordStart=ts;stepStart=ts;}
+    var totalElapsed=ts-recordStart;
+    var stepElapsed=ts-stepStart;
+
+    // Stop after TOTAL ms
+    if(totalElapsed>=TOTAL){
+      recCtx.drawImage(frameCanvases[seq[fi%seq.length]],0,0,W,H);
+      recorder.stop();
+      return;
+    }
+
+    var cur=seq[fi%seq.length];
     var next=seq[(fi+1)%seq.length];
 
-    if(elapsed<frameDuration-FADE){
+    if(stepElapsed<FRAME_MS-FADE){
       recCtx.drawImage(frameCanvases[cur],0,0,W,H);
     } else {
-      var t=Math.min(1,(elapsed-(frameDuration-FADE))/FADE);
+      var t=Math.min(1,(stepElapsed-(FRAME_MS-FADE))/FADE);
       recCtx.drawImage(frameCanvases[cur],0,0,W,H);
       recCtx.globalAlpha=t;
       recCtx.drawImage(frameCanvases[next],0,0,W,H);
       recCtx.globalAlpha=1;
     }
 
-    if(elapsed>=frameDuration){
-      fi++;
-      stepStart=ts; // reset timer at the exact rAF tick of the transition
-      if(fi>=seq.length){
-        recorder.stop();
-        return;
-      }
+    if(stepElapsed>=FRAME_MS){
+      fi++;        // wraps via modulo — loops forever until TOTAL
+      stepStart=ts;
     }
     requestAnimationFrame(drawStep);
   }
@@ -751,7 +767,8 @@ function doBuildVideo(){
 }
 
 var boomCanvas=null;
-function startCanvasAnim(canvases,W,H){
+function startCanvasAnim(canvases,W,H,delay){
+  delay=delay||200;
   var preview=document.getElementById('boom-preview');
   if(!boomCanvas||!boomCanvas.parentNode){
     boomCanvas=document.createElement('canvas');
@@ -760,7 +777,7 @@ function startCanvasAnim(canvases,W,H){
   }
   boomCanvas.width=W;boomCanvas.height=H;
   var ctx=boomCanvas.getContext('2d');
-  var fi=0,last=0,delay=1333;
+  var fi=0,last=0;
   if(boomAnimRAF)cancelAnimationFrame(boomAnimRAF);
   function step(ts){
     if(ts-last>delay){ctx.drawImage(canvases[fi],0,0,W,H);fi=(fi+1)%canvases.length;last=ts;}
