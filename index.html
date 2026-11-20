@@ -7,6 +7,7 @@
      Netlify hosting facts for this site: static/SSR served via Netlify Edge. -->
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Piksure</title>
+<script src="https://cdn.jsdelivr.net/npm/mp4-muxer@4.5.3/build/mp4-muxer.min.js"></script>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Franklin:wght@400;500;600&family=Limelight&family=Special+Elite&family=Homemade+Apple&display=swap">
 <style>
 /* ── BOOMERANG MODAL ── */
@@ -24,8 +25,6 @@
 .boom-dl{padding:9px 24px;border-radius:40px;border:1px solid var(--brass);background:transparent;color:var(--brass);font-size:13px;font-weight:600;cursor:pointer;transition:background .15s,color .15s;}
 .boom-dl:hover{background:var(--brass);color:var(--bg);}
 .boom-dl:disabled{opacity:.38;cursor:not-allowed;}
-#boom-video{width:100%;max-width:320px;border-radius:9px;border:1px solid var(--line);display:none;background:#000;}
-.boom-hint{font-size:11px;color:var(--muted);text-align:center;display:none;}
 .boom-spinner{width:36px;height:36px;border:2px solid var(--line);border-top-color:var(--brass);border-radius:50%;animation:bspin .8s linear infinite;}
 @keyframes bspin{to{transform:rotate(360deg);}}
 
@@ -458,7 +457,7 @@ button:disabled{opacity:.38;cursor:not-allowed;}
 
 
 <!-- Boomerang modal -->
-<div id="boom-modal" role="dialog" aria-modal="true" aria-label="Boomerang video">
+<div id="boom-modal" role="dialog" aria-modal="true" aria-label="Boomerang">
   <div class="boom-box">
     <div class="boom-title">Boomerang</div>
     <div id="boom-working" style="display:flex;flex-direction:column;align-items:center;gap:12px;">
@@ -466,9 +465,8 @@ button:disabled{opacity:.38;cursor:not-allowed;}
       <div class="boom-status" id="boom-status">Building video…</div>
     </div>
     <div id="boom-done" style="display:none;width:100%;flex-direction:column;align-items:center;gap:10px;">
-      <img id="boom-preview" src="" alt="Boomerang preview">
-      <video id="boom-video" autoplay loop muted playsinline></video>
-      <p class="boom-hint" id="boom-hint">Hold the video to save it to your camera roll.</p>
+      <canvas id="boom-preview" style="width:100%;max-width:320px;border-radius:9px;border:1px solid var(--line);display:none;"></canvas>
+      <p class="boom-hint" id="boom-hint" style="display:none;font-size:11px;color:var(--muted);text-align:center;"></p>
     </div>
     <div class="boom-actions">
       <button class="boom-dl" id="boom-dl" disabled>⬇ Save Video</button>
@@ -633,56 +631,49 @@ function stopKioskCountdown(){if(kioskRaf)cancelAnimationFrame(kioskRaf);kioskRa
 function doReset(){stopKioskCountdown();state.frames=[null,null,null,null];for(var i=0;i<4;i++)updateFsThumb(i);state.caption="";$("#caption").value="";setActiveSlot(0);refresh();schedule();msg("Ready for the next group.");}
 $("#kiosk-cancel").addEventListener("click",stopKioskCountdown);
 
-/* ── BOOMERANG VIDEO ── */
+/* ── BOOMERANG ── */
 var boomBtn=document.getElementById('boom-btn');
 var boomModal=document.getElementById('boom-modal');
 var boomAnimRAF=null;
-var boomVideoBlob=null;
+var boomBlobUrl=null;
+var boomExt='mp4';
 
 function boomSetStatus(t){document.getElementById('boom-status').textContent=t;}
 function openBoomModal(){boomModal.classList.add('visible');}
-function closeBoomModal(){boomModal.classList.remove('visible');if(boomAnimRAF){cancelAnimationFrame(boomAnimRAF);boomAnimRAF=null;}}
+function closeBoomModal(){
+  boomModal.classList.remove('visible');
+  if(boomAnimRAF){cancelAnimationFrame(boomAnimRAF);boomAnimRAF=null;}
+}
 document.getElementById('boom-close').addEventListener('click',closeBoomModal);
 boomModal.addEventListener('click',function(e){if(e.target===boomModal)closeBoomModal();});
 
 document.getElementById('boom-dl').addEventListener('click',function(){
-  if(!boomVideoBlob)return;
-  var ext=boomVideoBlob.type.indexOf('mp4')>=0?'mp4':'webm';
-  var url=URL.createObjectURL(boomVideoBlob);
-  // On mobile, <a download> is blocked — open the video in a new tab so user can save it
-  var isMobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-  if(isMobile){
-    window.open(url,'_blank');
-  } else {
-    var a=document.createElement('a');
-    a.href=url;a.download='piksure-boomerang.'+ext;
-    document.body.appendChild(a);a.click();
-    setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},1000);
-  }
+  if(!boomBlobUrl)return;
+  var a=document.createElement('a');
+  a.href=boomBlobUrl;
+  a.download='piksure-boomerang.'+boomExt;
+  document.body.appendChild(a);a.click();
+  setTimeout(function(){document.body.removeChild(a);},1000);
 });
 
 boomBtn.addEventListener('click',function(){
   if(state.frames.filter(Boolean).length<4){msg('Take all 4 frames first.');return;}
-  boomVideoBlob=null;
+  if(boomBlobUrl){URL.revokeObjectURL(boomBlobUrl);boomBlobUrl=null;}
   document.getElementById('boom-dl').disabled=true;
   document.getElementById('boom-working').style.display='flex';
   document.getElementById('boom-done').style.display='none';
+  document.getElementById('boom-preview').style.display='none';
+  document.getElementById('boom-hint').style.display='none';
   openBoomModal();
-  boomSetStatus('Building video…');
-  setTimeout(doBuildVideo,60);
+  boomSetStatus('Rendering frames…');
+  setTimeout(doBoom,60);
 });
 
-function doBuildVideo(){
-  /* Record 10 seconds of continuously looping boomerang frames.
-     Each frame holds for FRAME_MS ms, then cross-fades into the next.
-     fi wraps with modulo so the loop repeats until totalDuration is hit. */
+function doBoom(){
   var seq=[0,1,2,3,2,1];
-  var TOTAL=10000;   // 10 seconds total
-  var FRAME_MS=200;  // ms per step — fast boomerang feel, ~5 loops in 10 s
-  var FADE=60;       // ms cross-fade between steps
-  var W=720,H=540;
+  var W=540,H=405; // 4:3 — balanced quality vs encode time
 
-  // Build one processed canvas per unique frame, with Piksure brand overlay
+  // Render each unique frame with filter + brand watermark
   var frameCanvases=[];
   for(var i=0;i<4;i++){
     var c=document.createElement('canvas');
@@ -690,117 +681,47 @@ function doBuildVideo(){
     var ctx=c.getContext('2d');
     var proc=processFrame(i);
     var s=Math.max(W/proc.width,H/proc.height);
-    var dw=proc.width*s,dh=proc.height*s;
-    ctx.drawImage(proc,(W-dw)/2,(H-dh)/2,dw,dh);
-    // Brand watermark — bottom-right corner
-    var brand='piksure';
-    var fSize=Math.round(W*0.045); // ~32px at 720w
-    ctx.font='600 '+fSize+'px "Libre Franklin",Arial,sans-serif';
+    ctx.drawImage(proc,(W-proc.width*s)/2,(H-proc.height*s)/2,proc.width*s,proc.height*s);
+    // Watermarks
+    var fs=Math.round(W*0.048);
+    var pad=Math.round(W*0.032);
+    ctx.shadowColor='rgba(0,0,0,0.6)';ctx.shadowBlur=5;ctx.shadowOffsetY=1;
+    ctx.fillStyle='rgba(255,255,255,0.75)';
     ctx.textBaseline='bottom';
+    // Bottom-right: brand
+    ctx.font='600 '+fs+'px "Libre Franklin",Arial,sans-serif';
     ctx.textAlign='right';
-    var pad=Math.round(W*0.028);
-    // subtle shadow for legibility on any background
-    ctx.shadowColor='rgba(0,0,0,0.55)';
-    ctx.shadowBlur=6;
-    ctx.shadowOffsetX=0;ctx.shadowOffsetY=1;
-    ctx.fillStyle='rgba(255,255,255,0.72)';
-    ctx.fillText(brand,W-pad,H-pad);
+    ctx.fillText('piksure',W-pad,H-pad);
+    // Bottom-left: date
+    var now=new Date();
+    var dateStr=now.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
+    ctx.font='500 '+fs+'px "Libre Franklin",Arial,sans-serif';
+    ctx.textAlign='left';
+    ctx.fillText(dateStr,pad,H-pad);
     ctx.shadowColor='transparent';ctx.shadowBlur=0;
     frameCanvases.push(c);
   }
 
-  // Show live preview animation (same speed)
-  startCanvasAnim(seq.map(function(i){return frameCanvases[i];}),W,H,FRAME_MS);
+  // Start animated preview
+  startPreview(seq.map(function(i){return frameCanvases[i];}),W,H);
 
-  // Set up recording canvas
-  var recCanvas=document.createElement('canvas');
-  recCanvas.width=W;recCanvas.height=H;
-  var recCtx=recCanvas.getContext('2d');
-
-  var mimeType='video/mp4;codecs=avc1';
-  if(!MediaRecorder.isTypeSupported(mimeType))mimeType='video/mp4';
-  if(!MediaRecorder.isTypeSupported(mimeType))mimeType='video/webm;codecs=vp9';
-  if(!MediaRecorder.isTypeSupported(mimeType))mimeType='video/webm;codecs=vp8';
-  if(!MediaRecorder.isTypeSupported(mimeType))mimeType='video/webm';
-  if(!MediaRecorder.isTypeSupported(mimeType)){
-    boomSetStatus('Video recording not supported in this browser.');
-    return;
+  // Try WebCodecs MP4 first (iOS 16+, Chrome, Android Chrome)
+  if(typeof VideoEncoder!=='undefined' && typeof Mp4Muxer!=='undefined'){
+    boomSetStatus('Encoding MP4…');
+    setTimeout(function(){encodeMP4(frameCanvases,seq,W,H);},30);
+  } else {
+    // Fallback: MediaRecorder (Android, desktop)
+    boomSetStatus('Encoding video…');
+    setTimeout(function(){encodeMediaRecorder(frameCanvases,seq,W,H);},30);
   }
-
-  var stream=recCanvas.captureStream(30);
-  var recorder=new MediaRecorder(stream,{mimeType:mimeType,videoBitsPerSecond:4000000});
-  var chunks=[];
-  recorder.ondataavailable=function(e){if(e.data&&e.data.size>0)chunks.push(e.data);};
-  recorder.onstop=function(){
-    boomVideoBlob=new Blob(chunks,{type:mimeType.split(';')[0]});
-    var videoUrl=URL.createObjectURL(boomVideoBlob);
-    var vid=document.getElementById('boom-video');
-    vid.src=videoUrl;
-    vid.style.display='block';
-    if(boomCanvas)boomCanvas.style.display='none';
-    // On mobile show the long-press hint; on desktop show download button
-    var isMobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-    var hint=document.getElementById('boom-hint');
-    if(isMobile){
-      hint.style.display='block';
-      hint.textContent='Hold the video to save it to your camera roll.';
-    }
-    document.getElementById('boom-dl').disabled=false;
-    boomSetStatus('');
-  };
-
-  recorder.start();
-
-  var fi=0;
-  var recordStart=null; // total elapsed since recording began
-  var stepStart=null;   // elapsed within current frame step
-
-  function drawStep(ts){
-    if(recordStart===null){recordStart=ts;stepStart=ts;}
-    var totalElapsed=ts-recordStart;
-    var stepElapsed=ts-stepStart;
-
-    // Stop after TOTAL ms
-    if(totalElapsed>=TOTAL){
-      recCtx.drawImage(frameCanvases[seq[fi%seq.length]],0,0,W,H);
-      recorder.stop();
-      return;
-    }
-
-    var cur=seq[fi%seq.length];
-    var next=seq[(fi+1)%seq.length];
-
-    if(stepElapsed<FRAME_MS-FADE){
-      recCtx.drawImage(frameCanvases[cur],0,0,W,H);
-    } else {
-      var t=Math.min(1,(stepElapsed-(FRAME_MS-FADE))/FADE);
-      recCtx.drawImage(frameCanvases[cur],0,0,W,H);
-      recCtx.globalAlpha=t;
-      recCtx.drawImage(frameCanvases[next],0,0,W,H);
-      recCtx.globalAlpha=1;
-    }
-
-    if(stepElapsed>=FRAME_MS){
-      fi++;        // wraps via modulo — loops forever until TOTAL
-      stepStart=ts;
-    }
-    requestAnimationFrame(drawStep);
-  }
-  requestAnimationFrame(drawStep);
 }
 
-var boomCanvas=null;
-function startCanvasAnim(canvases,W,H,delay){
-  delay=delay||200;
-  var preview=document.getElementById('boom-preview');
-  if(!boomCanvas||!boomCanvas.parentNode){
-    boomCanvas=document.createElement('canvas');
-    boomCanvas.style.cssText='width:260px;height:195px;border-radius:9px;border:1px solid var(--line);display:block;max-width:100%;';
-    preview.parentNode.replaceChild(boomCanvas,preview);
-  }
-  boomCanvas.width=W;boomCanvas.height=H;
-  var ctx=boomCanvas.getContext('2d');
-  var fi=0,last=0;
+/* ── Preview animation ── */
+function startPreview(canvases,W,H){
+  var el=document.getElementById('boom-preview');
+  el.width=W;el.height=H;el.style.display='block';
+  var ctx=el.getContext('2d');
+  var fi=0,last=0,delay=150;
   if(boomAnimRAF)cancelAnimationFrame(boomAnimRAF);
   function step(ts){
     if(ts-last>delay){ctx.drawImage(canvases[fi],0,0,W,H);fi=(fi+1)%canvases.length;last=ts;}
@@ -811,6 +732,95 @@ function startCanvasAnim(canvases,W,H,delay){
   document.getElementById('boom-done').style.display='flex';
 }
 
+function onEncoded(blob,ext){
+  boomExt=ext;
+  boomBlobUrl=URL.createObjectURL(blob);
+  document.getElementById('boom-dl').disabled=false;
+  boomSetStatus('');
+  // On iOS, <a download> works for MP4 blobs in Safari 16+ — no extra hint needed
+}
+
+/* ── WebCodecs MP4 encoder (iOS 16+, Chrome, Android) ── */
+function encodeMP4(frameCanvases,seq,W,H){
+  var FPS=10; // 10fps × 6 frames = 0.6s loop; 10s total = ~16 loops
+  var TOTAL_FRAMES=FPS*10; // 100 frames for 10 seconds
+  var muxer=new Mp4Muxer.Muxer({
+    target:new Mp4Muxer.ArrayBufferTarget(),
+    video:{codec:'avc',width:W,height:H,frameRate:FPS},
+    fastStart:'in-memory'
+  });
+  var encoder=new VideoEncoder({
+    output:function(chunk,meta){muxer.addVideoChunk(chunk,meta);},
+    error:function(e){
+      console.error('VideoEncoder error',e);
+      boomSetStatus('Encoding video…');
+      encodeMediaRecorder(frameCanvases,seq,W,H);
+    }
+  });
+  encoder.configure({codec:'avc1.42001f',width:W,height:H,bitrate:2500000,framerate:FPS});
+
+  var fi=0;
+  function encodeNext(){
+    if(fi>=TOTAL_FRAMES){
+      encoder.flush().then(function(){
+        muxer.finalize();
+        var buf=muxer.target.buffer;
+        onEncoded(new Blob([buf],{type:'video/mp4'}),'mp4');
+      });
+      return;
+    }
+    var seqIdx=seq[fi%seq.length];
+    var imgBitmap;
+    createImageBitmap(frameCanvases[seqIdx]).then(function(bmp){
+      var frame=new VideoFrame(bmp,{timestamp:fi*(1000000/FPS),duration:1000000/FPS});
+      encoder.encode(frame,{keyFrame:fi%FPS===0});
+      frame.close();bmp.close();
+      fi++;
+      // yield every 10 frames so UI stays responsive
+      if(fi%10===0)setTimeout(encodeNext,0); else encodeNext();
+    });
+  }
+  encodeNext();
+}
+
+/* ── MediaRecorder fallback (Android Chrome, desktop) ── */
+function encodeMediaRecorder(frameCanvases,seq,W,H){
+  var TOTAL=10000,FRAME_MS=200,FADE=60;
+  var recCanvas=document.createElement('canvas');
+  recCanvas.width=W;recCanvas.height=H;
+  var recCtx=recCanvas.getContext('2d');
+  var mimeType='video/mp4;codecs=avc1';
+  if(!MediaRecorder.isTypeSupported(mimeType))mimeType='video/mp4';
+  if(!MediaRecorder.isTypeSupported(mimeType))mimeType='video/webm;codecs=vp9';
+  if(!MediaRecorder.isTypeSupported(mimeType))mimeType='video/webm;codecs=vp8';
+  if(!MediaRecorder.isTypeSupported(mimeType))mimeType='video/webm';
+  var ext=mimeType.indexOf('mp4')>=0?'mp4':'webm';
+  var stream=recCanvas.captureStream(30);
+  var recorder=new MediaRecorder(stream,{mimeType:mimeType,videoBitsPerSecond:3000000});
+  var chunks=[];
+  recorder.ondataavailable=function(e){if(e.data&&e.data.size>0)chunks.push(e.data);};
+  recorder.onstop=function(){
+    onEncoded(new Blob(chunks,{type:mimeType.split(';')[0]}),ext);
+  };
+  recorder.start();
+  var fi=0,recordStart=null,stepStart=null;
+  function drawStep(ts){
+    if(recordStart===null){recordStart=ts;stepStart=ts;}
+    if(ts-recordStart>=TOTAL){recCtx.drawImage(frameCanvases[seq[fi%seq.length]],0,0,W,H);recorder.stop();return;}
+    var stepElapsed=ts-stepStart;
+    var cur=seq[fi%seq.length],next=seq[(fi+1)%seq.length];
+    if(stepElapsed<FRAME_MS-FADE){
+      recCtx.drawImage(frameCanvases[cur],0,0,W,H);
+    } else {
+      var t=Math.min(1,(stepElapsed-(FRAME_MS-FADE))/FADE);
+      recCtx.drawImage(frameCanvases[cur],0,0,W,H);
+      recCtx.globalAlpha=t;recCtx.drawImage(frameCanvases[next],0,0,W,H);recCtx.globalAlpha=1;
+    }
+    if(stepElapsed>=FRAME_MS){fi++;stepStart=ts;}
+    requestAnimationFrame(drawStep);
+  }
+  requestAnimationFrame(drawStep);
+}
 /* start */
 buildFrameStrip();refresh();render(false);
 if(document.fonts&&document.fonts.load){Promise.all(['38px "Limelight"','24px "Special Elite"','600 24px "Libre Franklin"'].map(function(f){return document.fonts.load(f);})).then(schedule,schedule);document.fonts.ready.then(schedule);}
