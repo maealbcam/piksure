@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Velvet Booth — Your Boomerang</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:#0a0504;color:#f0e5d3;font-family:"Libre Franklin",system-ui,sans-serif;min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;}
+h1{font-family:"Courier New",monospace;letter-spacing:.12em;font-size:1rem;color:#d4ac5e;text-transform:uppercase;margin-bottom:20px;text-align:center;}
+#boom-canvas{border-radius:10px;max-width:100%;box-shadow:0 8px 40px rgba(0,0,0,.7);}
+p{margin-top:16px;font-size:12px;color:#9a8878;text-align:center;}
+.btn{margin-top:20px;padding:12px 32px;background:#b02e43;color:#fff3ea;border:none;border-radius:40px;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;display:inline-block;}
+#loading{color:#9a8878;font-size:13px;}
+</style>
+</head>
+<body>
+<h1>✦ Velvet Booth</h1>
+<div id="loading">Loading your boomerang…</div>
+<canvas id="boom-canvas" style="display:none"></canvas>
+<p id="hint" style="display:none">Your boomerang is playing ✦</p>
+<a id="save-btn" class="btn" style="display:none" download="velvetbooth-boomerang.jpg">Save a frame</a>
+
+<script>
+(function(){
+  var hash=location.hash.slice(1);
+  if(!hash){document.getElementById('loading').textContent='No boomerang found. Take one at the booth!';return;}
+  var urls;
+  try{urls=JSON.parse(decodeURIComponent(hash));}catch(e){document.getElementById('loading').textContent='Could not load boomerang.';return;}
+  if(!urls||!urls.length){document.getElementById('loading').textContent='No frames found.';return;}
+
+  // Load all images then animate
+  var imgs=[];var loaded=0;
+  // boomerang sequence: 0 1 2 3 2 1
+  var seq=[0,1,2,3,2,1];
+
+  urls.forEach(function(url,i){
+    var img=new Image();
+    img.crossOrigin='anonymous';
+    img.onload=function(){
+      imgs[i]=img;
+      loaded++;
+      if(loaded===urls.length)startAnim();
+    };
+    img.onerror=function(){
+      loaded++;
+      if(loaded===urls.length)startAnim();
+    };
+    img.src=url;
+  });
+
+  function startAnim(){
+    var canvas=document.getElementById('boom-canvas');
+    var W=imgs[0]?imgs[0].naturalWidth:320;
+    var H=imgs[0]?imgs[0].naturalHeight:240;
+    // cap size for mobile
+    var maxW=Math.min(W,window.innerWidth-48);
+    var scale=maxW/W;
+    canvas.width=Math.round(W*scale);
+    canvas.height=Math.round(H*scale);
+    canvas.style.display='block';
+    document.getElementById('loading').style.display='none';
+    document.getElementById('hint').style.display='block';
+
+    // Set save button to first frame
+    if(imgs[0]){
+      var tmp=document.createElement('canvas');
+      tmp.width=canvas.width;tmp.height=canvas.height;
+      tmp.getContext('2d').drawImage(imgs[0],0,0,canvas.width,canvas.height);
+      document.getElementById('save-btn').href=tmp.toDataURL('image/jpeg',0.9);
+      document.getElementById('save-btn').style.display='inline-block';
+    }
+
+    var ctx=canvas.getContext('2d');
+    var fi=0,last=0,delay=120;
+    function step(ts){
+      if(ts-last>delay){
+        var src=imgs[seq[fi]];
+        if(src)ctx.drawImage(src,0,0,canvas.width,canvas.height);
+        fi=(fi+1)%seq.length;
+        last=ts;
+      }
+      requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+})();
+</script>
+</body>
+</html>
