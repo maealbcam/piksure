@@ -707,10 +707,11 @@ function doBuildVideo(){
   recCanvas.width=W;recCanvas.height=H;
   var recCtx=recCanvas.getContext('2d');
 
-  var mimeType='video/webm;codecs=vp9';
+  var mimeType='video/mp4;codecs=avc1';
+  if(!MediaRecorder.isTypeSupported(mimeType))mimeType='video/mp4';
+  if(!MediaRecorder.isTypeSupported(mimeType))mimeType='video/webm;codecs=vp9';
   if(!MediaRecorder.isTypeSupported(mimeType))mimeType='video/webm;codecs=vp8';
   if(!MediaRecorder.isTypeSupported(mimeType))mimeType='video/webm';
-  if(!MediaRecorder.isTypeSupported(mimeType))mimeType='video/mp4';
   if(!MediaRecorder.isTypeSupported(mimeType)){
     boomSetStatus('Video recording not supported in this browser.');
     return;
