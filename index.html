@@ -24,6 +24,8 @@
 .boom-dl{padding:9px 24px;border-radius:40px;border:1px solid var(--brass);background:transparent;color:var(--brass);font-size:13px;font-weight:600;cursor:pointer;transition:background .15s,color .15s;}
 .boom-dl:hover{background:var(--brass);color:var(--bg);}
 .boom-dl:disabled{opacity:.38;cursor:not-allowed;}
+#boom-video{width:100%;max-width:320px;border-radius:9px;border:1px solid var(--line);display:none;background:#000;}
+.boom-hint{font-size:11px;color:var(--muted);text-align:center;display:none;}
 .boom-spinner{width:36px;height:36px;border:2px solid var(--line);border-top-color:var(--brass);border-radius:50%;animation:bspin .8s linear infinite;}
 @keyframes bspin{to{transform:rotate(360deg);}}
 
@@ -463,11 +465,13 @@ button:disabled{opacity:.38;cursor:not-allowed;}
       <div class="boom-spinner"></div>
       <div class="boom-status" id="boom-status">Building video…</div>
     </div>
-    <div id="boom-done" style="display:none;width:100%;display:flex;flex-direction:column;align-items:center;gap:14px;">
+    <div id="boom-done" style="display:none;width:100%;flex-direction:column;align-items:center;gap:10px;">
       <img id="boom-preview" src="" alt="Boomerang preview">
+      <video id="boom-video" autoplay loop muted playsinline></video>
+      <p class="boom-hint" id="boom-hint">Hold the video to save it to your camera roll.</p>
     </div>
     <div class="boom-actions">
-      <button class="boom-dl" id="boom-dl" disabled>⬇ Download Video</button>
+      <button class="boom-dl" id="boom-dl" disabled>⬇ Save Video</button>
       <button class="boom-close" id="boom-close">Close</button>
     </div>
   </div>
@@ -645,10 +649,16 @@ document.getElementById('boom-dl').addEventListener('click',function(){
   if(!boomVideoBlob)return;
   var ext=boomVideoBlob.type.indexOf('mp4')>=0?'mp4':'webm';
   var url=URL.createObjectURL(boomVideoBlob);
-  var a=document.createElement('a');
-  a.href=url;a.download='piksure-boomerang.'+ext;
-  document.body.appendChild(a);a.click();
-  setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},1000);
+  // On mobile, <a download> is blocked — open the video in a new tab so user can save it
+  var isMobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+  if(isMobile){
+    window.open(url,'_blank');
+  } else {
+    var a=document.createElement('a');
+    a.href=url;a.download='piksure-boomerang.'+ext;
+    document.body.appendChild(a);a.click();
+    setTimeout(function(){document.body.removeChild(a);URL.revokeObjectURL(url);},1000);
+  }
 });
 
 boomBtn.addEventListener('click',function(){
@@ -723,6 +733,18 @@ function doBuildVideo(){
   recorder.ondataavailable=function(e){if(e.data&&e.data.size>0)chunks.push(e.data);};
   recorder.onstop=function(){
     boomVideoBlob=new Blob(chunks,{type:mimeType.split(';')[0]});
+    var videoUrl=URL.createObjectURL(boomVideoBlob);
+    var vid=document.getElementById('boom-video');
+    vid.src=videoUrl;
+    vid.style.display='block';
+    if(boomCanvas)boomCanvas.style.display='none';
+    // On mobile show the long-press hint; on desktop show download button
+    var isMobile=/iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    var hint=document.getElementById('boom-hint');
+    if(isMobile){
+      hint.style.display='block';
+      hint.textContent='Hold the video to save it to your camera roll.';
+    }
     document.getElementById('boom-dl').disabled=false;
     boomSetStatus('');
   };
