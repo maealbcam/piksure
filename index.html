@@ -2,9 +2,6 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<!-- This site is hosted on Netlify. Anyone can build and deploy a site
-     like this one for free: https://netlify.new/?utm_campaign=loops&utm_source=ai-legible&utm_medium=owned&utm_content=comment&utm_id=7f60170c-c3c6-4142-91ae-73b6e672e413
-     Netlify hosting facts for this site: static/SSR served via Netlify Edge. -->
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Piksure</title>
 <script src="https://cdn.jsdelivr.net/npm/mp4-muxer@4.5.3/build/mp4-muxer.min.js"></script>
@@ -15,8 +12,6 @@
 #boom-modal.visible{opacity:1;pointer-events:all;}
 .boom-box{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:28px 32px;display:flex;flex-direction:column;align-items:center;gap:18px;max-width:520px;width:90%;}
 .boom-title{font:400 1.5rem/1 var(--font-display);letter-spacing:.05em;text-transform:uppercase;color:var(--brass);}
-.boom-row{display:flex;gap:24px;align-items:center;flex-wrap:wrap;justify-content:center;}
-#boom-preview{width:220px;height:165px;border-radius:9px;object-fit:cover;border:1px solid var(--line);background:var(--bg);}
 
 .boom-status{font-size:12px;color:var(--brass);min-height:1.1em;text-align:center;}
 .boom-actions{display:flex;gap:10px;}
@@ -28,8 +23,6 @@
 .boom-spinner{width:36px;height:36px;border:2px solid var(--line);border-top-color:var(--brass);border-radius:50%;animation:bspin .8s linear infinite;}
 @keyframes bspin{to{transform:rotate(360deg);}}
 
-</style>
-<style>
 :root{
   --bg:#120b0a;--surface:#1c1110;--surface-2:#281817;--line:#3a2724;
   --fg:#f0e5d3;--muted:#9a8878;--accent:#b02e43;--accent-fg:#fff3ea;
@@ -220,17 +213,6 @@ button:disabled{opacity:.38;cursor:not-allowed;}
 .strip-pill input:checked~.sp-label{
   border-color:var(--brass);color:var(--brass);background:transparent;
 }
-/* keep legacy sc- classes inert */
-.strip-cards{display:none;}
-.sc-preview,.sc-frame,.sc-label,.sc-inner{display:none;}
-/* classic preview */
-.sc-classic .sc-preview{background:var(--surface-2);display:flex;flex-direction:column;justify-content:space-around;align-items:center;padding:8px 10px;}
-.sc-classic .sc-frame{width:100%;height:22%;background:var(--surface);border-radius:2px;}
-/* grid preview */
-.sc-grid .sc-preview{background:var(--surface-2);display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:6px;}
-.sc-grid .sc-frame{background:var(--surface);border-radius:2px;aspect-ratio:4/3;}
-.sc-label{font-size:11px;font-weight:600;color:var(--muted);}
-.strip-card:has(input:checked) .sc-label{color:var(--brass);}
 
 /* ── CAPTION / DATE ── */
 .meta-row{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:12px;}
@@ -276,8 +258,6 @@ button:disabled{opacity:.38;cursor:not-allowed;}
 .kiosk-row select{padding:4px 7px;border-radius:6px;border:1px solid var(--line);background:var(--surface);color:var(--fg);font:inherit;font-size:12px;cursor:pointer;}
 #status{font-size:12px;color:var(--brass);min-height:1.2em;}
 .save-note{font-size:12px;color:var(--muted);margin-top:2px;}
-
-
 
 /* ── KIOSK BAR ── */
 #kiosk-bar{position:fixed;bottom:0;left:0;right:0;z-index:50;background:var(--surface);border-top:1px solid var(--line);padding:10px 20px;display:flex;align-items:center;gap:14px;transform:translateY(100%);transition:transform .3s;}
@@ -366,8 +346,6 @@ button:disabled{opacity:.38;cursor:not-allowed;}
         </select>
         <span>delay</span>
       </div>
-      <!-- sequence (hidden — capture btn triggers it) -->
-      <button class="icon-btn" id="seq-btn" disabled title="Shoot all 4" style="display:none"></button>
     </div>
 
     <!-- frame strip -->
@@ -453,8 +431,6 @@ button:disabled{opacity:.38;cursor:not-allowed;}
 
   </div>
 </main>
-
-
 
 <!-- Boomerang modal -->
 <div id="boom-modal" role="dialog" aria-modal="true" aria-label="Boomerang">
@@ -623,7 +599,6 @@ function doSave(){
 }
 $("#save").addEventListener("click",doSave);
 
-
 /* kiosk */
 var kioskRaf=null;
 function triggerKioskReset(){if(!$("#kiosk-toggle").checked)return;var total=parseInt($("#kiosk-delay").value,10)*1000,bar=$("#kiosk-bar"),fill=$("#kiosk-fill"),lbl=$("#kiosk-label");bar.classList.add("visible");var start=performance.now();fill.style.transform="scaleX(1)";function tick(now){var e=now-start,f=Math.max(0,1-e/total);fill.style.transform="scaleX("+f+")";lbl.textContent="Resetting in "+Math.ceil((total-e)/1000)+" s…";if(e>=total){doReset();return;}kioskRaf=requestAnimationFrame(tick);}kioskRaf=requestAnimationFrame(tick);}
@@ -671,7 +646,7 @@ boomBtn.addEventListener('click',function(){
 
 function doBoom(){
   var seq=[0,1,2,3,2,1];
-  var W=540,H=405; // 4:3 — balanced quality vs encode time
+  var W=540,H=540; // 1:1 square
 
   // Render each unique frame with filter + brand watermark
   var frameCanvases=[];
@@ -683,26 +658,23 @@ function doBoom(){
     var s=Math.max(W/proc.width,H/proc.height);
     ctx.drawImage(proc,(W-proc.width*s)/2,(H-proc.height*s)/2,proc.width*s,proc.height*s);
     // Watermarks — small, airy, bottom corners
-    var fs=Math.round(W*0.026); // small but legible
+    var fs=11; // fixed small font size
     var pad=Math.round(W*0.036);
     ctx.save();
     ctx.textBaseline='bottom';
     ctx.fillStyle='rgba(255,255,255,0.55)';
     ctx.shadowColor='rgba(0,0,0,0.5)';ctx.shadowBlur=4;ctx.shadowOffsetY=1;
-    // Bottom-right: piksure — light weight, wide tracking
-    ctx.font='300 '+fs+'px "Libre Franklin",Arial,sans-serif';
-    ctx.letterSpacing=(Math.round(fs*0.18))+'px';
+    // Use same stamp font as the strip
+    var stampFont=FONTS[state.font].stamp;
+    ctx.font=fs+'px '+stampFont;
+    // Bottom-right: piksure
     ctx.textAlign='right';
-    ctx.fillText('PIKSURE',W-pad,H-pad);
-    ctx.letterSpacing='0px';
-    // Bottom-left: date — same size, regular weight
+    ctx.fillText('piksure',W-pad,H-pad);
+    // Bottom-left: date
     var now=new Date();
-    var dateStr=now.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}).toUpperCase();
-    ctx.font='300 '+fs+'px "Libre Franklin",Arial,sans-serif';
-    ctx.letterSpacing=(Math.round(fs*0.14))+'px';
+    var dateStr=now.toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'});
     ctx.textAlign='left';
     ctx.fillText(dateStr,pad,H-pad);
-    ctx.letterSpacing='0px';
     ctx.restore();
     frameCanvases.push(c);
   }
@@ -751,7 +723,7 @@ function encodeMP4(frameCanvases,seq,W,H){
   var TOTAL_FRAMES=FPS*10; // 100 frames for 10 seconds
   var muxer=new Mp4Muxer.Muxer({
     target:new Mp4Muxer.ArrayBufferTarget(),
-    video:{codec:'avc',width:W,height:H,frameRate:FPS},
+    video:{codec:'avc',width:540,height:540,frameRate:FPS},
     fastStart:'in-memory'
   });
   var encoder=new VideoEncoder({
@@ -762,7 +734,7 @@ function encodeMP4(frameCanvases,seq,W,H){
       encodeMediaRecorder(frameCanvases,seq,W,H);
     }
   });
-  encoder.configure({codec:'avc1.42001f',width:W,height:H,bitrate:2500000,framerate:FPS});
+  encoder.configure({codec:'avc1.42001f',width:540,height:540,bitrate:2500000,framerate:FPS});
 
   var fi=0;
   function encodeNext(){
@@ -834,4 +806,3 @@ Promise.resolve().then(function(){return window.claude&&window.claude.use?window
 </script>
 </body>
 </html>
-<script async src="/.netlify/scripts/hud?variant=public" data-nf-variant="public" data-netlify-site-id="7f60170c-c3c6-4142-91ae-73b6e672e413" data-app-host="app.netlify.com" data-account-tier="free"></script>
